@@ -21,8 +21,8 @@ embedder, summarizer = load_models()
 # -----------------------------
 @st.cache_data
 def load_data():
-    products_df = pd.read_excel("Sample Meta.xlsx")
-    reviews_df = pd.read_excel("Sample Reviews.xlsx")
+    products_df = pd.read_excel("src/chinmay/Sample Meta.xlsx")
+    reviews_df = pd.read_excel("src/chinmay/Sample Reviews.xlsx")
     return products_df, reviews_df
 
 products_df, reviews_df = load_data()
