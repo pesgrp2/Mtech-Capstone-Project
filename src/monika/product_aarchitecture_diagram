@@ -1,0 +1,21 @@
+                ┌──────────────────┐
+                │    User Browser  │
+                └─────────┬────────┘
+                          │
+                          ▼
+                ┌──────────────────┐
+                │  Streamlit Frontend │
+                └─────────┬────────┘
+                          │ REST API
+                          ▼
+                ┌──────────────────┐
+                │     FastAPI Server │
+                │  - Load models once │
+                │  - Query FAISS      │
+                │  - Generate summary │
+                └─────────┬────────┘
+                          │
+                          ▼
+                ┌──────────────────┐
+                │ Vector Store (FAISS / Pinecone) │
+                └──────────────────┘
