@@ -1,83 +1,118 @@
+import os
+os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
+
 import streamlit as st
 import pandas as pd
-import faiss
+import numpy as np
 from sentence_transformers import SentenceTransformer
 from transformers import pipeline
+from sklearn.metrics.pairwise import cosine_similarity
 
 # -----------------------------
-# Load Data
+# Streamlit Page Config
 # -----------------------------
-meta_df = pd.read_excel("src/chinmay/Sample Meta.xlsx")
-reviews_df = pd.read_excel("src/chinmay/Sample Reviews.xlsx")
+st.set_page_config(page_title="Amazon Review Summarizer", layout="wide")
 
-from sentence_transformers import SentenceTransformer
-
-embedder = SentenceTransformer(
-    "all-MiniLM-L6-v2",
-    device="cpu"   # VERY IMPORTANT
-)
-
-print("Model loaded successfully")
-
-review_texts = reviews_df["text"].fillna("").tolist()
-review_embeddings = embedder.encode(review_texts, convert_to_numpy=True)
-
-index = faiss.IndexFlatL2(review_embeddings.shape[1])
-index.add(review_embeddings)
-
-# -----------------------------
-# Summarizer (LLM)
-# -----------------------------
-summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
-
-
-# -----------------------------
-# Streamlit UI
-# -----------------------------
 st.title("📝 Amazon Product Review Summarizer (RAG-based)")
 
+# -----------------------------
+# Load Data (Cached)
+# -----------------------------
+@st.cache_data
+def load_data():
+    meta = pd.read_csv("src/chinmay/Appliances_meta.csv")
+    reviews = pd.read_csv("src/chinmay/Appliances_reviews.csv")
+    return meta, reviews
 
-# Dropdown for product titles
+meta_df, reviews_df = load_data()
+
+# -----------------------------
+# Load Embedding Model (Cached)
+# -----------------------------
+@st.cache_resource
+def load_embedder():
+    return SentenceTransformer("all-MiniLM-L6-v2", device="cpu")
+
+embedder = load_embedder()
+
+# -----------------------------
+# Compute Review Embeddings (Cached)
+# -----------------------------
+@st.cache_resource
+def compute_embeddings(texts):
+    return embedder.encode(texts, convert_to_numpy=True)
+
+review_texts = reviews_df["text"].fillna("").tolist()
+review_embeddings = compute_embeddings(review_texts)
+
+# -----------------------------
+# Load Lightweight Summarizer (Cached)
+# -----------------------------
+@st.cache_resource
+def load_summarizer():
+    return pipeline(
+        "summarization",
+        model="sshleifer/distilbart-cnn-12-6",  # much smaller & safer
+        device=-1
+    )
+
+summarizer = load_summarizer()
+
+# -----------------------------
+# UI Components
+# -----------------------------
 product_options = meta_df["title"].dropna().unique().tolist()
 selected_product = st.selectbox("Select a Product Title:", product_options)
 
-
-# Submit button
 if st.button("Generate Summary"):
-    # Step 1: Find product metadata
+
     product_row = meta_df[meta_df["title"] == selected_product]
-    
+
     if not product_row.empty:
+
         asin = product_row.iloc[0]["parent_asin"]
-        '''
-        st.subheader("📦 Product Details")
-        st.write(f"**Title:** {product_row.iloc[0]['title']}")
-        st.write(f"**Average Rating:** {product_row.iloc[0]['average_rating']}")
-        st.write(f"**Rating Count:** {product_row.iloc[0]['rating_number']}")
-        st.write(f"**Features:** {product_row.iloc[0]['features']}")
-        '''
-        # Display product images if available
-        if isinstance(product_row.iloc[0]["images"], list) and len(product_row.iloc[0]["images"]) > 0:
-            st.subheader("🖼 Product Images")
-            for img in product_row.iloc[0]["images"]:
-                st.image(img["large"], width=200)
-        
-        # Step 2: Get reviews for this product
-        product_reviews = reviews_df[reviews_df["parent_asin"] == asin]["text"].fillna("").tolist()
-        
+
+        # Get product reviews
+        product_reviews = reviews_df[
+            reviews_df["parent_asin"] == asin
+        ]["text"].fillna("").tolist()
+
         if product_reviews:
-            # Step 3: Retrieve top reviews using FAISS
-            query_embedding = embedder.encode([selected_product], convert_to_numpy=True)
-            D, I = index.search(query_embedding, k=5)
-            top_reviews = [review_texts[i] for i in I[0] if i < len(review_texts)]
-            
-            # Step 4: Summarize reviews
+
+            # Encode query
+            query_embedding = embedder.encode(
+                [selected_product],
+                convert_to_numpy=True
+            )
+
+            # Cosine similarity instead of FAISS
+            similarities = cosine_similarity(
+                query_embedding,
+                review_embeddings
+            )[0]
+
+            top_indices = np.argsort(similarities)[-5:][::-1]
+            top_reviews = [review_texts[i] for i in top_indices]
+
+            # Join top reviews
             joined_reviews = " ".join(top_reviews)
-            summary = summarizer(joined_reviews, max_length=150, min_length=50, do_sample=False)[0]["summary_text"]
-            
+
+            # Limit input length (important for stability)
+            joined_reviews = joined_reviews[:1000]
+
+            # Generate summary
+            summary = summarizer(
+                joined_reviews,
+                max_length=120,
+                min_length=40,
+                do_sample=False
+            )[0]["summary_text"]
+
             st.subheader("📝 Review Summary")
             st.write(summary)
+
         else:
             st.warning("No reviews found for this product.")
+
     else:
         st.error("Product not found in metadata.")
