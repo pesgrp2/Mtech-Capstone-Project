@@ -7,13 +7,17 @@ from transformers import pipeline
 # -----------------------------
 # Load Data
 # -----------------------------
-meta_df = pd.read_excel("Sample Meta.xlsx")
-reviews_df = pd.read_excel("Sample Reviews.xlsx")
+meta_df = pd.read_excel("src/chinmay/Sample Meta.xlsx")
+reviews_df = pd.read_excel("src/chinmay/Sample Reviews.xlsx")
 
-# -----------------------------
-# Embedding Model
-# -----------------------------
-embedder = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+from sentence_transformers import SentenceTransformer
+
+embedder = SentenceTransformer(
+    "all-MiniLM-L6-v2",
+    device="cpu"   # VERY IMPORTANT
+)
+
+print("Model loaded successfully")
 
 review_texts = reviews_df["text"].fillna("").tolist()
 review_embeddings = embedder.encode(review_texts, convert_to_numpy=True)
@@ -26,14 +30,17 @@ index.add(review_embeddings)
 # -----------------------------
 summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
 
+
 # -----------------------------
 # Streamlit UI
 # -----------------------------
 st.title("📝 Amazon Product Review Summarizer (RAG-based)")
 
+
 # Dropdown for product titles
 product_options = meta_df["title"].dropna().unique().tolist()
 selected_product = st.selectbox("Select a Product Title:", product_options)
+
 
 # Submit button
 if st.button("Generate Summary"):
@@ -42,13 +49,13 @@ if st.button("Generate Summary"):
     
     if not product_row.empty:
         asin = product_row.iloc[0]["parent_asin"]
-        
+        '''
         st.subheader("📦 Product Details")
         st.write(f"**Title:** {product_row.iloc[0]['title']}")
         st.write(f"**Average Rating:** {product_row.iloc[0]['average_rating']}")
         st.write(f"**Rating Count:** {product_row.iloc[0]['rating_number']}")
         st.write(f"**Features:** {product_row.iloc[0]['features']}")
-        
+        '''
         # Display product images if available
         if isinstance(product_row.iloc[0]["images"], list) and len(product_row.iloc[0]["images"]) > 0:
             st.subheader("🖼 Product Images")
