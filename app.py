@@ -5,7 +5,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from sentence_transformers import SentenceTransformer
-from transformers import pipeline
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from sklearn.metrics.pairwise import cosine_similarity
 
 # -----------------------------
@@ -50,13 +50,16 @@ review_embeddings = compute_embeddings(review_texts)
 # -----------------------------
 @st.cache_resource
 def load_summarizer():
-    return pipeline(
-        "summarization",
-        model="sshleifer/distilbart-cnn-12-6",  # much smaller & safer
-        device=-1
-    )
+    model_name = "sshleifer/distilbart-cnn-12-6"
 
-summarizer = load_summarizer()
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+
+    return tokenizer, model
+
+tokenizer, model = load_summarizer()
+
+#summarizer = load_summarizer()
 
 # -----------------------------
 # UI Components
@@ -101,12 +104,21 @@ if st.button("Generate Summary"):
             joined_reviews = joined_reviews[:1000]
 
             # Generate summary
-            summary = summarizer(
+            inputs = tokenizer(
                 joined_reviews,
+                return_tensors="pt",
+                truncation=True,
+                max_length=1024
+            )
+
+            summary_ids = model.generate(
+                inputs["input_ids"],
                 max_length=120,
                 min_length=40,
                 do_sample=False
-            )[0]["summary_text"]
+            )
+
+            summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
 
             st.subheader("📝 Review Summary")
             st.write(summary)
