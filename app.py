@@ -29,7 +29,8 @@ RATING_NEGATIVE = (1, 2)
 RATING_NEUTRAL = (3,)
 RATING_POSITIVE = (4, 5)
 PRODUCTS_PER_ROW = 4
-MAX_PRODUCTS_SHOWN = 24  # Show first N products (after filter)
+MAX_PRODUCTS_SHOWN = 500   # Max products to consider (after filter)
+PAGE_SIZE = 16             # Products per page (pagination)
 
 # -----------------------------
 # Streamlit Page Config
@@ -289,15 +290,25 @@ def show_summary_dialog(asin, product_title):
                 st.divider()
 
 # -----------------------------
-# Session state for which product to show in popup
+# Session state
 # -----------------------------
 if "dialog_asin" not in st.session_state:
     st.session_state["dialog_asin"] = None
     st.session_state["dialog_title"] = None
+if "list_page" not in st.session_state:
+    st.session_state["list_page"] = 1
+if "list_last_search" not in st.session_state:
+    st.session_state["list_last_search"] = ""
+if "scroll_to_top" not in st.session_state:
+    st.session_state["scroll_to_top"] = False
 
 # -----------------------------
 # Header (Amazon-style)
 # -----------------------------
+if st.session_state.get("scroll_to_top"):
+    st.markdown("<script>window.scrollTo(0, 0);</script>", unsafe_allow_html=True)
+    st.session_state["scroll_to_top"] = False
+
 st.markdown("""
 <div class="amazon-header">
   <h1>📦 Review Summarizer</h1>
@@ -306,14 +317,52 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # -----------------------------
-# Search filter
+# Search + pagination bar (single line)
 # -----------------------------
-search = st.text_input("Search products by name", placeholder="Type to filter products…", key="search")
+bar_c1, bar_c2, bar_c3, bar_c4, bar_c5 = st.columns([3, 0.8, 1.2, 0.9, 0.9])
+with bar_c1:
+    search = st.text_input(
+        "Search products by name",
+        placeholder="Type to filter products…",
+        key="search",
+    )
+with bar_c2:
+    # Visual search button (search happens as you type)
+    st.button("Search", key="search_button", use_container_width=True)
+
 meta_filtered = meta_df.dropna(subset=["title"])
 if search and search.strip():
     q = search.strip().lower()
     meta_filtered = meta_filtered[meta_filtered["title"].str.lower().str.contains(q, na=False)]
 meta_filtered = meta_filtered.head(MAX_PRODUCTS_SHOWN)
+
+# Reset page when search changes
+if st.session_state["list_last_search"] != (search or ""):
+    st.session_state["list_page"] = 1
+    st.session_state["list_last_search"] = search or ""
+
+total_products = len(meta_filtered)
+total_pages = max(1, (total_products + PAGE_SIZE - 1) // PAGE_SIZE)
+current_page = min(max(1, st.session_state["list_page"]), total_pages)
+st.session_state["list_page"] = current_page
+start_idx = (current_page - 1) * PAGE_SIZE
+page_slice = meta_filtered.iloc[start_idx : start_idx + PAGE_SIZE]
+
+with bar_c3:
+    if total_products > 0:
+        st.markdown(f"**Page {current_page} / {total_pages}**")
+with bar_c4:
+    if total_products > 0:
+        if st.button("← Prev", key="pag_prev_top", disabled=(current_page <= 1)):
+            st.session_state["list_page"] = current_page - 1
+            st.session_state["scroll_to_top"] = True
+            st.rerun()
+with bar_c5:
+    if total_products > 0:
+        if st.button("Next →", key="pag_next_top", disabled=(current_page >= total_pages)):
+            st.session_state["list_page"] = current_page + 1
+            st.session_state["scroll_to_top"] = True
+            st.rerun()
 
 # -----------------------------
 # Product grid
@@ -321,7 +370,7 @@ meta_filtered = meta_filtered.head(MAX_PRODUCTS_SHOWN)
 if meta_filtered.empty:
     st.info("No products match your search. Try a different term.")
 else:
-    rows = [meta_filtered.iloc[i : i + PRODUCTS_PER_ROW] for i in range(0, len(meta_filtered), PRODUCTS_PER_ROW)]
+    rows = [page_slice.iloc[i : i + PRODUCTS_PER_ROW] for i in range(0, len(page_slice), PRODUCTS_PER_ROW)]
     for row_df in rows:
         cols = st.columns(PRODUCTS_PER_ROW)
         for idx, (_, row) in enumerate(row_df.iterrows()):
@@ -371,6 +420,23 @@ else:
                     st.session_state["dialog_asin"] = asin
                     st.session_state["dialog_title"] = title
                     st.rerun()
+
+    # Pagination (fixed at bottom of product list)
+    st.markdown("---")
+    pc1, pc2, pc3, pc4, pc5 = st.columns([1, 1, 2, 1, 1])
+    with pc1:
+        if st.button("← Previous", key="pag_prev", disabled=(current_page <= 1)):
+            st.session_state["list_page"] = current_page - 1
+            st.session_state["scroll_to_top"] = True
+            st.rerun()
+    with pc3:
+        st.markdown(f"**Page {current_page} of {total_pages}**")
+        st.caption(f"Showing {start_idx + 1}–{min(start_idx + PAGE_SIZE, total_products)} of {total_products} products")
+    with pc5:
+        if st.button("Next →", key="pag_next", disabled=(current_page >= total_pages)):
+            st.session_state["list_page"] = current_page + 1
+            st.session_state["scroll_to_top"] = True
+            st.rerun()
 
 # -----------------------------
 # Open popup if a product was selected
