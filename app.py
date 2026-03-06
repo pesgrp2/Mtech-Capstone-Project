@@ -1,5 +1,5 @@
 """
-Amazon Product Review Summarizer (RAG-based).
+Product Review Summarizer.
 Amazon-style UI: browse products, open sentiment & summary in a popup.
 """
 import os
@@ -254,7 +254,7 @@ def show_summary_dialog(asin, product_title):
     n_neg = int(counts.get("negative", 0))
 
     st.markdown(f"**{product_title[:80]}{'…' if len(product_title) > 80 else ''}**")
-    st.caption(f"Based on {n_reviews} review(s)")
+    st.caption(f"{n_reviews} reviews")
 
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -264,7 +264,7 @@ def show_summary_dialog(asin, product_title):
     with c3:
         st.metric("😞 Negative", f"{n_neg} ({100*n_neg/max(n_reviews,1):.0f}%)")
 
-    with st.spinner("Building summary…"):
+    with st.spinner("Loading…"):
         rag_texts = get_rag_reviews_for_summary(product_data, product_title)
         summary = summarize_reviews(rag_texts)
 

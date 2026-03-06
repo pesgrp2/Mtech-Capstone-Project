@@ -1,12 +1,12 @@
 # Amazon Product Review Summarizer
 
-A RAG-based web app that lets users browse products and view **sentiment breakdown** (positive / neutral / negative) and an **AI-generated summary** of customer reviews in a single click. Helps shoppers decide faster and reduce purchase time.
+A web app that lets users browse products and view **sentiment breakdown** (positive / neutral / negative) and a **summary** of customer reviews in a single click. Helps shoppers decide faster and reduce purchase time.
 
 ## Features
 
 - **Amazon-style UI**: Product grid with search, images, ratings, and prices
-- **Sentiment analysis**: Counts of positive, neutral, and negative reviews (from star ratings)
-- **RAG summary**: Summary generated from the most relevant reviews for each product
+- **Sentiment breakdown**: Counts of positive, neutral, and negative reviews (from star ratings)
+- **Review summary**: Summary from the most relevant reviews for each product
 - **Popup details**: Click "See review summary" to open sentiment and summary in a modal
 - **Expandable comments**: Customer review text available in a collapsed section
 
@@ -87,7 +87,7 @@ The app will open in your browser (usually `http://localhost:8501`). If it doesn
 
 ```
 Mtech-Capstone-Project/
-├── app.py              # Streamlit app (UI + RAG + sentiment)
+├── app.py              # Streamlit app (UI + sentiment + summary)
 ├── requirement.txt     # Python dependencies
 ├── README.md            # This file
 └── src/chinmay/        # Default location for CSVs
@@ -108,4 +108,4 @@ Mtech-Capstone-Project/
 
 ## License
 
-Use according to your project / institution terms.
+Not specified.
