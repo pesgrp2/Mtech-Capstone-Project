@@ -20,7 +20,7 @@ A web app that lets users browse products and view **sentiment breakdown** (posi
 ### 1. Clone the repository
 
 ```bash
-git clone <your-repo-url>
+gh repo clone pesgrp2/Mtech-Capstone-Project
 cd Mtech-Capstone-Project
 ```
 
