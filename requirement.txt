@@ -4,5 +4,6 @@ numpy
 faiss-cpu
 sentence-transformers
 transformers
+scikit-learn
 torch
 openpyxl
