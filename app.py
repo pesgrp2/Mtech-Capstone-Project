@@ -10,6 +10,36 @@ from langchain_community.llms import Ollama
 from langchain_core.prompts import PromptTemplate
 from langchain_classic.chains import RetrievalQA
 
+
+def compute_rouge_against_retrieved(answer: str, source_docs):
+    """
+    ROUGE F1 comparing the generated answer to concatenated retrieved chunks.
+    This is a retrieval-as-reference proxy (not ROUGE vs a human-written gold summary).
+    """
+    if not answer or not str(answer).strip() or not source_docs:
+        return None, None, None
+    try:
+        from rouge_score import rouge_scorer
+    except ImportError:
+        return None, None, None
+    ref_parts = []
+    for d in source_docs:
+        t = getattr(d, "page_content", None) or ""
+        if t.strip():
+            ref_parts.append(t.strip())
+    reference = " ".join(ref_parts)[:12000]
+    if not reference.strip():
+        return None, None, None
+    pred = str(answer).strip()[:8000]
+    scorer = rouge_scorer.RougeScorer(["rouge1", "rouge2", "rougeL"], use_stemmer=True)
+    s = scorer.score(reference, pred)
+    return (
+        round(s["rouge1"].fmeasure, 3),
+        round(s["rouge2"].fmeasure, 3),
+        round(s["rougeL"].fmeasure, 3),
+    )
+
+
 st.set_page_config(
     page_title="AI Product Review Analyzer",
     layout="wide",
@@ -234,10 +264,24 @@ if st.button("Analyze Reviews"):
         # --------------------------------------------------
 
         st.subheader("📈 Model Evaluation Metrics")
+        r1, r2, rL = compute_rouge_against_retrieved(result, docs)
         col1, col2, col3 = st.columns(3)
-        col1.metric("ROUGE-1", "0.81")
-        col2.metric("ROUGE-2", "0.67")
-        col3.metric("ROUGE-L", "0.75")
+        if r1 is not None:
+            col1.metric("ROUGE-1 (F1)", f"{r1:.3f}")
+            col2.metric("ROUGE-2 (F1)", f"{r2:.3f}")
+            col3.metric("ROUGE-L (F1)", f"{rL:.3f}")
+            st.caption(
+                "ROUGE F1 compares the answer to **retrieved review text** (proxy overlap). "
+                "For publication-style evaluation, compare against human reference summaries instead."
+            )
+        else:
+            col1.metric("ROUGE-1 (F1)", "—")
+            col2.metric("ROUGE-2 (F1)", "—")
+            col3.metric("ROUGE-L (F1)", "—")
+            st.caption(
+                "Could not compute ROUGE (empty answer or no retrieved docs). "
+                "Install: `pip install rouge-score` if the package is missing."
+            )
         st.markdown("---")
 
 

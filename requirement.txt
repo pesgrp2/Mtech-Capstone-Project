@@ -7,3 +7,4 @@ transformers
 scikit-learn
 torch
 openpyxl
+rouge-score
