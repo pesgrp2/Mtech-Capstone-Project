@@ -1,5 +1,5 @@
+import os
 import pandas as pd
-from sentence_transformers import SentenceTransformer
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
@@ -10,51 +10,38 @@ from langchain_community.llms import Ollama
 from langchain_core.prompts import PromptTemplate
 from langchain_classic.chains import RetrievalQA
 
-
-df = pd.read_parquet("embedding_ready_reviews_small.parquet")
-
-model = SentenceTransformer("all-MiniLM-L6-v2", device='cpu')
-
-embeddings = HuggingFaceEmbeddings(
-    model_name="sentence-transformers/all-MiniLM-L6-v2",
-    model_kwargs={'device': 'cpu'}
-)
-
-text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=500,      # characters per chunk
-    chunk_overlap=100    # overlap to maintain context
-)
-
-documents = []
-
-for i, row in df.iterrows():
-    documents.append(
-        Document(
-            page_content=row["embedding_text"],
-            metadata={"asin": row["asin"]}
-        )
-    )
-
-chunks = text_splitter.split_documents(documents)
-
-vectorstore = FAISS.from_documents(
-    chunks,
-    embeddings
-)
-
-vectorstore.save_local("faiss_index")
-
-
-
-
-# --------------------------------------------------
-# Page Config
-# --------------------------------------------------
-
 st.set_page_config(
     page_title="AI Product Review Analyzer",
-    layout="wide"
+    layout="wide",
 )
+
+# Build FAISS only when explicitly requested (not on every Streamlit rerun).
+# Run once: BUILD_FAISS_INDEX=1 streamlit run app.py
+# Or use a separate build_index.py script.
+if os.environ.get("BUILD_FAISS_INDEX", "").strip() in ("1", "true", "yes"):
+    from sentence_transformers import SentenceTransformer
+
+    df = pd.read_parquet("embedding_ready_reviews_small.parquet")
+    _ = SentenceTransformer("all-MiniLM-L6-v2", device="cpu")  # warm cache if needed
+    _embed = HuggingFaceEmbeddings(
+        model_name="sentence-transformers/all-MiniLM-L6-v2",
+        model_kwargs={"device": "cpu"},
+    )
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=500,
+        chunk_overlap=100,
+    )
+    documents = [
+        Document(page_content=row["embedding_text"], metadata={"asin": row["asin"]})
+        for _, row in df.iterrows()
+    ]
+    chunks = text_splitter.split_documents(documents)
+    vectorstore = FAISS.from_documents(chunks, _embed)
+    vectorstore.save_local("faiss_index")
+    st.error("FAISS index built. Stop the app, unset BUILD_FAISS_INDEX, and run again normally.")
+    st.stop()
+
+
 st.title("🛍️ AI Product Review Analyzer (RAG System)")
 
 
@@ -175,7 +162,20 @@ def build_chain():
     return qa_chain
 
 
-qa_chain = build_chain()
+try:
+    qa_chain = build_chain()
+except Exception as e:
+    qa_chain = None
+    st.error("Could not load the RAG chain (FAISS or Ollama). See details below.")
+    with st.expander("Error details"):
+        st.exception(e)
+    st.info(
+        "**Common fixes:**\n"
+        "- Start Ollama and pull the model: `ollama serve` then `ollama pull llama3`\n"
+        "- Ensure `faiss_index/` exists (run once with `BUILD_FAISS_INDEX=1 streamlit run app.py`)\n"
+        "- Check that `embedding_ready_reviews_small.parquet` is in the project folder"
+    )
+    st.stop()
 
 
 # --------------------------------------------------
@@ -196,17 +196,36 @@ if st.button("Analyze Reviews"):
 
     if query:
 
-        with st.spinner("Analyzing reviews..."):
-            response = qa_chain.invoke({"query": query})
-            result = response["result"]
-            docs = response["source_documents"]
+        try:
+            with st.spinner("Analyzing reviews… (first Ollama response can take 1–2 minutes)"):
+                response = qa_chain.invoke({"query": query})
+        except Exception as e:
+            st.error("The analyzer failed while calling the model or retriever.")
+            with st.expander("Error details"):
+                st.exception(e)
+            st.info(
+                "If you see **connection refused**, start Ollama: `ollama serve`, "
+                "then `ollama pull llama3` and try again."
+            )
+            st.stop()
+
+        result = response.get("result") or response.get("answer") or ""
+        docs = response.get("source_documents") or []
 
         # --------------------------------------------------
         # AI Summary Output
         # --------------------------------------------------
 
         st.subheader("📊 AI Generated Insights")
-        st.write(result
+        if result and str(result).strip():
+            st.write(result)
+        else:
+            st.warning(
+                "The model returned an empty answer. "
+                "Check Ollama logs, try a shorter question, or confirm `ollama run llama3` works in a terminal."
+            )
+            with st.expander("Debug: raw response keys"):
+                st.write(list(response.keys()))
         st.markdown("---")
 
 
