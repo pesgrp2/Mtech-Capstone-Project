@@ -1,0 +1,8 @@
+[theme]
+# Light shell so the app does not follow OS dark mode as an all-black UI
+base = "light"
+primaryColor = "#ff9800"
+backgroundColor = "#f4f6fb"
+secondaryBackgroundColor = "#ffffff"
+textColor = "#1e293b"
+font = "sans serif"
