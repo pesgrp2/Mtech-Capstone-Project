@@ -1,110 +1,214 @@
-# Amazon Product Review Summarizer
+# AI Product Review Analyzer (RAG)
 
-A web app that lets users browse products and view **sentiment breakdown** (positive / neutral / negative) and a **summary** of customer reviews in a single click. Helps shoppers decide faster and reduce purchase time.
+A **Streamlit** app that answers natural-language questions over customer reviews using **Retrieval-Augmented Generation (RAG)**. It retrieves relevant review chunks from a **FAISS** vector index, generates an answer with **Ollama** (`llama3`), shows **recommended products**, **ROUGE-style overlap** metrics (optional), and a **product summary** dialog backed by review text and optional Amazon-style metadata.
 
-## Features
-
-- **Amazon-style UI**: Product grid with search, images, ratings, and prices
-- **Sentiment breakdown**: Counts of positive, neutral, and negative reviews (from star ratings)
-- **Review summary**: Summary from the most relevant reviews for each product
-- **Popup details**: Click "See review summary" to open sentiment and summary in a modal
-- **Expandable comments**: Customer review text available in a collapsed section
+---
 
 ## Prerequisites
 
-- **Python 3.8 or higher**
-- **~2–3 GB free disk space** (for ML models; downloaded on first run)
+- **Python 3.10+** (3.11 recommended)
+- **[Ollama](https://ollama.com/)** installed and running locally
+- **~2–4 GB disk** for embedding models and the Llama 3 weights (first pull)
 
-## Setup
+---
 
-### 1. Clone the repository
+## 1. Install Ollama and the `llama3` model
+
+### Install Ollama
+
+- **macOS / Windows:** Download and install from [ollama.com/download](https://ollama.com/download).
+- **Linux:** follow the instructions on [ollama.com](https://ollama.com/) (install script or package).
+
+### Start the Ollama server
+
+Ollama usually runs as a background service after install. If you need to start it manually:
 
 ```bash
-gh repo clone pesgrp2/Mtech-Capstone-Project
-cd Mtech-Capstone-Project
+ollama serve
 ```
 
-### 2. Create a virtual environment (recommended)
+Leave this terminal open, or run it as a system service (depends on your OS). The app talks to Ollama at the default URL (`http://127.0.0.1:11434`).
+
+### Pull the `llama3` model (required)
+
+In a **separate** terminal:
+
+```bash
+ollama pull llama3
+```
+
+Verify the model is available:
+
+```bash
+ollama list
+```
+
+You should see `llama3` in the list. The app uses this model name by default (see `OLLAMA_MODEL` in `review_app/config.py`).
+
+**Optional quick test:**
+
+```bash
+ollama run llama3 "Say hello in one sentence."
+```
+
+---
+
+## 2. Python environment and dependencies
+
+From the **project root** (`Mtech-Capstone-Project/`):
 
 ```bash
 python -m venv venv
 ```
 
-- **Windows:**  
-  `venv\Scripts\activate`
-- **macOS / Linux:**  
-  `source venv/bin/activate`
+Activate the venv:
 
-### 3. Install dependencies
+- **macOS / Linux:** `source venv/bin/activate`
+- **Windows (cmd):** `venv\Scripts\activate.bat`
+- **Windows (PowerShell):** `venv\Scripts\Activate.ps1`
+
+Install packages:
 
 ```bash
 pip install -r requirement.txt
 ```
 
-Installation may take a few minutes (PyTorch, Transformers, Sentence-Transformers).
+---
 
-### 4. Add your data
+## 3. Data and FAISS index
 
-Place your CSV files so the app can find them. By default it looks for:
+### Review data (parquet)
 
-| File | Default path |
-|------|----------------|
-| Product metadata | `src/chinmay/Appliances_meta.csv` |
-| Reviews | `src/chinmay/Appliances_reviews.csv` |
+By default the app loads:
 
-**Metadata CSV** should include columns such as: `title`, `parent_asin`, `average_rating`, `rating_number`, `price`, `images` (optional).
+| Role | Default path | Override env var |
+|------|----------------|------------------|
+| Embedded reviews for RAG / summaries | `embedding_ready_reviews_small.parquet` | `REVIEWS_PARQUET` |
 
-**Reviews CSV** should include: `parent_asin`, `text`, `rating` (1–5 stars).
+The parquet should include at least `asin`, and text in a column such as `embedding_text` (see `review_app/data/` for fallbacks).
 
-To use different paths, set environment variables before running:
+### Product metadata (optional, for images and dialog details)
+
+| Role | Default path | Override env var |
+|------|----------------|------------------|
+| Amazon-style meta CSV | `src/chinmay/Appliances_meta.csv` | `META_CSV` |
+
+### Vector index directory
+
+| Role | Default | Override env var |
+|------|---------|------------------|
+| Saved FAISS index | `faiss_index/` | `FAISS_INDEX_DIR` |
+
+### Build the FAISS index (first time only)
+
+If `faiss_index/` is missing, build it **once**:
+
+**macOS / Linux:**
 
 ```bash
-export META_CSV="path/to/your_meta.csv"
-export REVIEWS_CSV="path/to/your_reviews.csv"
+export REVIEWS_PARQUET="embedding_ready_reviews_small.parquet"   # optional if default is fine
+BUILD_FAISS_INDEX=1 streamlit run app.py
 ```
 
-## Run the app
+**Windows (Command Prompt):**
 
-From the project root:
+```cmd
+set REVIEWS_PARQUET=embedding_ready_reviews_small.parquet
+set BUILD_FAISS_INDEX=1
+streamlit run app.py
+```
+
+When you see the message that the index was built, **stop** the app, **unset** `BUILD_FAISS_INDEX`, and run normally (next section).
+
+---
+
+## 4. Run the Streamlit app
+
+**Requirements before this step:** Ollama is running and `ollama pull llama3` has completed; `faiss_index/` exists; parquet (and optional meta CSV) are in place.
+
+From the project root, with venv activated:
 
 ```bash
 streamlit run app.py
 ```
 
-The app will open in your browser (usually `http://localhost:8501`). If it doesn’t, open that URL manually.
+The UI opens in the browser (typically [http://localhost:8501](http://localhost:8501)).
 
-## Usage
+### Optional: theme
 
-1. Use the **search box** to filter products by name.
-2. Click **"See review summary"** on any product card.
-3. In the popup you’ll see:
-   - Sentiment counts (positive / neutral / negative)
-   - Overall summary
-   - Quick takeaway
-   - Expandable **Customer comments** with full review text
+Streamlit theme defaults live in `.streamlit/config.toml`.
 
-## Project structure (relevant parts)
+---
+
+## Project structure (for developers)
+
+High-level rule: **`app.py` is the entry point**; **domain logic lives in `review_app/`**.
 
 ```
 Mtech-Capstone-Project/
-├── app.py              # Streamlit app (UI + sentiment + summary)
-├── requirement.txt     # Python dependencies
-├── README.md            # This file
-└── src/chinmay/        # Default location for CSVs
-    ├── Appliances_meta.csv
-    └── Appliances_reviews.csv
+├── app.py                      # Streamlit entry: form, RAG invoke, results, charts, dialog trigger
+├── requirement.txt             # Python dependencies
+├── README.md                   # This file
+├── .streamlit/
+│   └── config.toml             # Streamlit theme (light / primary color)
+│
+├── review_app/                 # Application package (import as review_app.*)
+│   ├── __init__.py
+│   ├── config.py               # Paths, env defaults, model names, UI/retrieval constants
+│   ├── evaluation.py         # ROUGE vs retrieved text (optional metric)
+│   ├── rag.py                  # Embeddings, FAISS load, Ollama LLM, RetrievalQA chain, per-product LLM summary
+│   ├── build_index.py          # One-shot FAISS build when BUILD_FAISS_INDEX=1
+│   ├── ui.py                   # Custom CSS, sidebar copy, product cards, “More” list, @st.dialog summary
+│   └── data/                   # Data access layer (cached loads + business helpers)
+│       ├── __init__.py         # Re-exports main data API
+│       ├── images.py           # Parse/sanitize image URLs from meta strings
+│       ├── loading.py          # @st.cache_data: parquet + meta CSV
+│       ├── catalog.py          # ASIN → title/image from parquet + meta
+│       ├── meta.py             # Rich meta row for dialog (price, ratings, gallery URLs)
+│       ├── reviews.py          # Collect review text per ASIN; extractive card snippet
+│       └── ranking.py          # Rank ASINs from similarity_search_with_score
+│
+├── faiss_index/                # Generated FAISS files (not always in git)
+├── embedding_ready_reviews_small.parquet   # Default review source (your file may differ)
+└── src/chinmay/                # Default META_CSV location
+    └── Appliances_meta.csv
 ```
+
+### Import flow (mental model)
+
+1. **`app.py`** loads the chain via **`review_app.rag`**, runs the question form, then renders recommendations using **`review_app.data`** + **`review_app.ui`**.
+2. **`review_app.rag`** owns LangChain **RetrievalQA**, **FAISS**, **HuggingFaceEmbeddings**, and **Ollama**.
+3. **`review_app.data`** isolates pandas/IO and ranking; it uses Streamlit **`@st.cache_data`** for repeated loads.
+4. **`review_app.ui`** holds all heavy Streamlit layout/HTML for cards and the product dialog.
+
+---
+
+## Environment variables (summary)
+
+| Variable | Purpose |
+|----------|---------|
+| `REVIEWS_PARQUET` | Path to reviews parquet |
+| `META_CSV` | Path to metadata CSV |
+| `FAISS_INDEX_DIR` | Directory of saved FAISS index |
+| `BUILD_FAISS_INDEX` | Set to `1` / `true` / `yes` to rebuild index once |
+
+---
 
 ## Troubleshooting
 
-- **"Could not load data"**  
-  Check that the CSV paths exist and that `META_CSV` / `REVIEWS_CSV` point to the correct files if you set them.
+- **`Could not load the RAG chain`**  
+  Ensure **`ollama serve`** is running, **`ollama pull llama3`** finished, and **`faiss_index/`** exists.
 
-- **First run is slow**  
-  The first run downloads embedding and summarization models (~1–2 GB). Later runs use the cache and are faster.
+- **Connection refused to Ollama**  
+  Start the server: `ollama serve`, then retry.
 
-- **Out of memory**  
-  The app uses CPU by default. If you run out of RAM, reduce `MAX_REVIEWS_PER_PRODUCT` or `MAX_REVIEWS_FOR_SUMMARY` in the config at the top of `app.py`.
+- **First answer is slow**  
+  The first Llama inference after startup is often much slower; later requests are faster while the model stays loaded.
+
+- **ROUGE shows “—”**  
+  Install `rouge-score` if missing: `pip install rouge-score`. ROUGE also needs a non-empty answer and retrieved documents.
+
+---
 
 ## License
 
